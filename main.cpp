@@ -67,6 +67,41 @@ public:
     }
 };
 
+
+class Portfolio {
+private:
+    double availableCash;
+    double holdingsValue;
+
+public:
+    Portfolio(double cash, double holdings) {
+        availableCash = cash;
+        holdingsValue = holdings;
+    }
+
+    double getAvailableCash() const {
+        return availableCash;
+    }
+
+    double getHoldingsValue() const {
+        return holdingsValue;
+    }
+
+    double getAccountValue() const {
+        return availableCash + holdingsValue;
+    }
+
+    void display() const {
+        cout << "\n--- Portfolio Summary ---\n";
+        cout << "Available Cash: Rs. "
+             << availableCash << '\n';
+        cout << "Holdings Value: Rs. "
+             << holdingsValue << '\n';
+        cout << "Account Value: Rs. "
+             << getAccountValue() << '\n';
+    }
+};
+
 int main() {
     double entry, stop;
     int qty;
@@ -99,6 +134,9 @@ int main() {
     }
 
     RiskLimits limits(3000);
+
+    Portfolio portfolio(600000, 400000);
+    portfolio.display();
 
     trade.display();
     limits.displayResult(trade.getTotalRisk());
