@@ -1,10 +1,8 @@
 
 #include <iostream>
 #include <iomanip>
-#include <string>
 using namespace std;
 
-// STEP 1: Store trade information
 class TradeTicket {
 private:
     double entryPrice;
@@ -35,39 +33,75 @@ public:
 
     void display() const {
         cout << fixed << setprecision(2);
-        cout << "\n===== NiveshSetu =====\n";
+        cout << "\n--- Trade Details ---\n";
         cout << "Entry Price: Rs. " << entryPrice << '\n';
         cout << "Stop Loss: Rs. " << stopLoss << '\n';
         cout << "Quantity: " << quantity << '\n';
-        cout << "Risk per Share: Rs. "
-             << getRiskPerShare() << '\n';
-        cout << "Total Planned Risk: Rs. "
-             << getTotalRisk() << '\n';
+        cout << "Planned Risk: Rs. " << getTotalRisk() << '\n';
     }
 };
 
-// STEP 2: Run the program
+class RiskLimits {
+private:
+    double maxAllowedRisk;
+
+public:
+    RiskLimits(double limit) {
+        maxAllowedRisk = limit;
+    }
+
+    bool isWithinLimit(double totalRisk) const {
+        return totalRisk <= maxAllowedRisk;
+    }
+
+    void displayResult(double totalRisk) const {
+        cout << "\n--- Risk Assessment ---\n";
+        cout << "Maximum Allowed Risk: Rs. "
+             << maxAllowedRisk << '\n';
+
+        if (isWithinLimit(totalRisk)) {
+            cout << "Result: PASS - Risk is within the limit.\n";
+        } else {
+            cout << "Result: BLOCK - Risk exceeds the limit.\n";
+        }
+    }
+};
+
 int main() {
     double entry, stop;
     int qty;
 
+    cout << "=== NiveshSetu ===\n";
+
     cout << "Enter entry price: ";
-    cin >> entry;
+    if (!(cin >> entry)) {
+        cout << "Invalid entry price.\n";
+        return 1;
+    }
 
     cout << "Enter stop-loss price: ";
-    cin >> stop;
+    if (!(cin >> stop)) {
+        cout << "Invalid stop-loss price.\n";
+        return 1;
+    }
 
     cout << "Enter quantity: ";
-    cin >> qty;
+    if (!(cin >> qty)) {
+        cout << "Invalid quantity.\n";
+        return 1;
+    }
 
     TradeTicket trade(entry, stop, qty);
 
     if (!trade.isValid()) {
-        cout << "Invalid trade details. Please check your input.\n";
+        cout << "Invalid trade details. Check your inputs.\n";
         return 1;
     }
 
+    RiskLimits limits(3000);
+
     trade.display();
+    limits.displayResult(trade.getTotalRisk());
 
     return 0;
 }
