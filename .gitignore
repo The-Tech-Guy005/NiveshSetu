@@ -1,0 +1,13 @@
+@"
+build/
+*.exe
+*.o
+*.obj
+*.a
+*.dll
+*.dll.a
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+"@ | Set-Content .gitignore

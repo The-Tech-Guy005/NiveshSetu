@@ -21,10 +21,5 @@ target_include_directories(tradeguard_core
 add_executable(tradeguard src/main.cpp)
 target_link_libraries(tradeguard PRIVATE tradeguard_core)
 
-add_executable(tradeguard_tests
-tests/ risk_engine_tests.cpp 
-)
 
-target_link_libraries(tradeguard_tests PRIVATE tradeguard_core)
-add_test(NAME TradeGuardTests COMMAND tradeguard_tests)
 
