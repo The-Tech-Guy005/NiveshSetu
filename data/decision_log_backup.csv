@@ -1,0 +1,12 @@
+symbol,sector,entry,stop,quantity,decision,planned_loss,required_cash,stress_fraction,hash
+TCS,IT,100,90,10,PASS,100,1000,0.031,c4a4db28a4d9d72
+symbol,sector,entry,stop,quantity,decision,planned_loss,required_cash,stress_fraction,hash
+INFY,IT,100,90,60,BLOCK,600,6000,0.035999999999999997,f985c3295be2d7a2
+symbol,sector,entry,stop,quantity,decision,planned_loss,required_cash,stress_fraction,hash
+WIPRO,IT,100,110,10,BLOCK,0,0,0,ebf5af9b23d37e18
+symbol,sector,entry,stop,quantity,decision,planned_loss,required_cash,stress_fraction,hash
+INFY,IT,100,90,120,BLOCK,1200,12000,0.042000000000000003,84e69bde01de11f
+TCS,IT,100,90,10,0,100,1000,0.031,7391fbff2fbcf02b
+INFY,IT,100,90,60,1,600,6000,0.035999999999999997,57105567a8f4aea0
+WIPRO,IT,100,110,10,1,0,0,0,e8a437a8c5d13e42
+INFY,IT,100,90,120,1,1200,12000,0.042000000000000003,bdcac4287c21cc7d

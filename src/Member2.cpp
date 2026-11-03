@@ -1,3 +1,4 @@
+
 #include "Member2.h"
 
 #include <iostream>
@@ -6,56 +7,43 @@
 #include <iomanip>
 #include <string>
 #include <vector>
-#include <unordered_map>
-#include <cstdint>
 #include <cmath>
+#include <cstdint>
 #include <algorithm>
-#include <cctype>
-#include <limits>
 
 namespace niveshsetu {
 namespace member2 {
 
 namespace {
 
-// --------------------------------------------------
-// String utilities
-// --------------------------------------------------
+// ==================================================
+// HELPER FUNCTIONS
+// ==================================================
 
-std::string trim(const std::string& value) {
+std::string trim(const std::string& str) {
     const std::string whitespace = " \t\r\n";
+    const std::size_t first = str.find_first_not_of(whitespace);
 
-    std::size_t start = value.find_first_not_of(whitespace);
-
-    if (start == std::string::npos) {
+    if (first == std::string::npos)
         return "";
-    }
 
-    std::size_t end = value.find_last_not_of(whitespace);
-
-    return value.substr(start, end - start + 1);
+    const std::size_t last = str.find_last_not_of(whitespace);
+    return str.substr(first, last - first + 1);
 }
 
-std::string toLower(std::string value) {
+std::string toLower(std::string str) {
     std::transform(
-        value.begin(),
-        value.end(),
-        value.begin(),
+        str.begin(), str.end(), str.begin(),
         [](unsigned char c) {
             return static_cast<char>(std::tolower(c));
         }
     );
 
-    return value;
+    return str;
 }
-
-// --------------------------------------------------
-// CSV parser supporting quoted fields
-// --------------------------------------------------
 
 std::vector<std::string> parseCSVLine(const std::string& line) {
     std::vector<std::string> fields;
-
     std::string field;
     bool insideQuotes = false;
 
@@ -70,176 +58,109 @@ std::vector<std::string> parseCSVLine(const std::string& line) {
             } else {
                 insideQuotes = !insideQuotes;
             }
-        } else if (c == ',' && !insideQuotes) {
+        }
+        else if (c == ',' && !insideQuotes) {
             fields.push_back(trim(field));
             field.clear();
-        } else {
+        }
+        else {
             field += c;
         }
     }
 
     fields.push_back(trim(field));
-
     return fields;
 }
 
 std::string csvEscape(const std::string& value) {
-    if (value.find_first_of(",\"\r\n") == std::string::npos) {
+    if (value.find_first_of(",\"\n\r") == std::string::npos)
         return value;
-    }
 
-    std::string escaped = "\"";
+    std::string result = "\"";
 
     for (char c : value) {
-        if (c == '"') {
-            escaped += "\"\"";
-        } else {
-            escaped += c;
-        }
+        if (c == '"')
+            result += "\"\"";
+        else
+            result += c;
     }
 
-    escaped += "\"";
-
-    return escaped;
+    result += '"';
+    return result;
 }
-
-// --------------------------------------------------
-// Numeric parsing
-// --------------------------------------------------
 
 bool parseDouble(const std::string& value, double& result) {
     try {
+        std::string cleaned = trim(value);
         std::size_t position = 0;
 
-        result = std::stod(value, &position);
+        result = std::stod(cleaned, &position);
 
-        if (position != value.size() || !std::isfinite(result)) {
-            return false;
-        }
-
-        return true;
-    } catch (...) {
-        return false;
+        return position == cleaned.size()
+            && std::isfinite(result);
     }
-}
-
-bool parseInt(const std::string& value, int& result) {
-    try {
-        std::size_t position = 0;
-
-        result = std::stoi(value, &position);
-
-        return position == value.size();
-    } catch (...) {
+    catch (...) {
         return false;
     }
 }
 
 std::string formatDouble(double value) {
-    std::ostringstream output;
-
-    output << std::setprecision(
-        std::numeric_limits<double>::max_digits10
-    ) << value;
-
-    return output.str();
+    std::ostringstream out;
+    out << std::setprecision(17) << value;
+    return out.str();
 }
 
-// --------------------------------------------------
-// FNV-1a hash
-// --------------------------------------------------
-
+// FNV-1a checksum for accidental data-change detection.
+// This is not a cryptographic authentication mechanism.
 std::string generateHash(const std::string& data) {
     std::uint64_t hash = 14695981039346656037ULL;
 
-    const std::uint64_t prime = 1099511628211ULL;
-
     for (unsigned char c : data) {
-        hash ^= static_cast<std::uint64_t>(c);
-        hash *= prime;
+        hash ^= c;
+        hash *= 1099511628211ULL;
     }
 
-    std::ostringstream output;
+    std::ostringstream out;
+    out << std::hex << std::setfill('0')
+        << std::setw(16) << hash;
 
-    output << std::hex
-           << std::setfill('0')
-           << std::setw(16)
-           << hash;
-
-    return output.str();
+    return out.str();
 }
 
-// --------------------------------------------------
-// Find a column in a CSV header
-// --------------------------------------------------
-
-int findColumn(
-    const std::vector<std::string>& headers,
-    const std::string& columnName
-) {
-    for (std::size_t i = 0; i < headers.size(); ++i) {
-        if (toLower(trim(headers[i])) == toLower(columnName)) {
-            return static_cast<int>(i);
-        }
-    }
-
-    return -1;
-}
-
-bool getField(
-    const std::vector<std::string>& fields,
-    int index,
-    std::string& value
-) {
-    if (index < 0 || index >= static_cast<int>(fields.size())) {
-        return false;
-    }
-
-    value = trim(fields[index]);
-
-    return true;
-}
-
-// --------------------------------------------------
-// Build the exact decision-record data before hashing
-// --------------------------------------------------
-
-std::string createDecisionRecord(
+// Create exactly the same nine-field record for saving
+// and hash verification.
+std::string makeRecordData(
     const TradeInput& trade,
     const RiskResult& result
 ) {
-    std::ostringstream record;
+    std::ostringstream out;
 
-    record << csvEscape(trade.symbol) << ","
-           << csvEscape(trade.sector) << ","
-           << formatDouble(trade.entryPrice) << ","
-           << formatDouble(trade.stopLoss) << ","
-           << trade.quantity << ","
-           << (
-                result.decision == RiskDecision::PASS
-                ? "PASS"
-                : "BLOCK"
-              ) << ","
-           << formatDouble(result.plannedLoss) << ","
-           << formatDouble(result.requiredCash) << ","
-           << formatDouble(result.stressLossFraction);
+    out << csvEscape(trade.symbol) << ","
+        << csvEscape(trade.sector) << ","
+        << formatDouble(trade.entryPrice) << ","
+        << formatDouble(trade.stopLoss) << ","
+        << trade.quantity << ","
+        << static_cast<int>(result.decision) << ","
+        << formatDouble(result.plannedLoss) << ","
+        << formatDouble(result.requiredCash) << ","
+        << formatDouble(result.stressLossFraction);
 
-    return record.str();
+    return out.str();
 }
 
 } // anonymous namespace
 
+
 // ==================================================
 // LOAD PORTFOLIO CSV
 //
-// Supported row format:
-// accountValue,100000
-// availableCash,50000
-// sectorExposure,IT,30000
+// Expected format:
 //
-// Header-based format is also supported:
-// accountValue,availableCash,sector,exposure
-// 100000,50000,IT,30000
+// type,key,value
+// account_value,,100000
+// available_cash,,5000
+// sector,IT,20000
+// sector,Banking,20000
 // ==================================================
 
 bool loadPortfolioCSV(
@@ -249,169 +170,97 @@ bool loadPortfolioCSV(
     std::ifstream file(filename);
 
     if (!file.is_open()) {
-        std::cerr << "Error: Cannot open portfolio CSV: "
+        std::cerr << "Could not open portfolio CSV: "
                   << filename << "\n";
         return false;
     }
 
-    PortfolioInput loadedPortfolio;
+    bool accountFound = false;
+    bool cashFound = false;
 
     std::string line;
-    std::vector<std::string> headers;
-
-    bool accountValueFound = false;
-    bool availableCashFound = false;
-    bool firstNonEmptyLine = true;
 
     while (std::getline(file, line)) {
-        if (trim(line).empty()) {
+        if (trim(line).empty())
             continue;
-        }
 
         std::vector<std::string> fields = parseCSVLine(line);
 
-        if (fields.empty()) {
+        if (fields.size() < 3) {
+            std::cerr << "Invalid portfolio CSV row: "
+                      << line << "\n";
+            return false;
+        }
+
+        std::string type = toLower(trim(fields[0]));
+        std::string key = trim(fields[1]);
+        std::string valueText = trim(fields[2]);
+
+        if (type == "type")
             continue;
+
+        double value = 0.0;
+
+        if (!parseDouble(valueText, value)) {
+            std::cerr << "Invalid portfolio value: "
+                      << line << "\n";
+            return false;
         }
 
-        if (firstNonEmptyLine) {
-            firstNonEmptyLine = false;
-
-            headers = fields;
-
-            bool isHeader =
-                findColumn(headers, "accountValue") >= 0 ||
-                findColumn(headers, "availableCash") >= 0 ||
-                findColumn(headers, "sector") >= 0;
-
-            if (isHeader) {
-                continue;
-            }
-        }
-
-        std::string key = toLower(trim(fields[0]));
-
-        // Key-value format
-        if (key == "accountvalue" && fields.size() >= 2) {
-            double value;
-
-            if (!parseDouble(fields[1], value) || value <= 0.0) {
-                std::cerr << "Invalid account value in portfolio CSV.\n";
+        if (type == "account_value") {
+            if (accountFound || value <= 0.0) {
+                std::cerr << "Invalid or duplicate account value.\n";
                 return false;
             }
 
-            loadedPortfolio.accountValue = value;
-            accountValueFound = true;
-            continue;
+            portfolio.accountValue = value;
+            accountFound = true;
         }
-
-        if (key == "availablecash" && fields.size() >= 2) {
-            double value;
-
-            if (!parseDouble(fields[1], value) || value < 0.0) {
-                std::cerr << "Invalid available cash in portfolio CSV.\n";
+        else if (type == "available_cash") {
+            if (cashFound || value < 0.0) {
+                std::cerr << "Invalid or duplicate available cash.\n";
                 return false;
             }
 
-            loadedPortfolio.availableCash = value;
-            availableCashFound = true;
-            continue;
+            portfolio.availableCash = value;
+            cashFound = true;
         }
-
-        if ((key == "sectorexposure" || key == "sector")
-            && fields.size() >= 3) {
-            double exposure;
-
-            if (trim(fields[1]).empty() ||
-                !parseDouble(fields[2], exposure) ||
-                exposure < 0.0) {
-                std::cerr << "Invalid sector exposure in portfolio CSV.\n";
+        else if (type == "sector") {
+            if (key.empty() || value < 0.0) {
+                std::cerr << "Invalid sector exposure.\n";
                 return false;
             }
 
-            loadedPortfolio.sectorExposure[fields[1]] = exposure;
-            continue;
+            portfolio.sectorExposure[key] = value;
         }
-
-        // Header-based format
-        int accountIndex = findColumn(headers, "accountValue");
-        int cashIndex = findColumn(headers, "availableCash");
-        int sectorIndex = findColumn(headers, "sector");
-        int exposureIndex = findColumn(headers, "exposure");
-
-        std::string value;
-
-        if (accountIndex >= 0 &&
-            getField(fields, accountIndex, value) &&
-            !value.empty()) {
-            double number;
-
-            if (!parseDouble(value, number) || number <= 0.0) {
-                return false;
-            }
-
-            loadedPortfolio.accountValue = number;
-            accountValueFound = true;
-        }
-
-        if (cashIndex >= 0 &&
-            getField(fields, cashIndex, value) &&
-            !value.empty()) {
-            double number;
-
-            if (!parseDouble(value, number) || number < 0.0) {
-                return false;
-            }
-
-            loadedPortfolio.availableCash = number;
-            availableCashFound = true;
-        }
-
-        std::string sector;
-        std::string exposureText;
-
-        if (getField(fields, sectorIndex, sector) &&
-            getField(fields, exposureIndex, exposureText) &&
-            !sector.empty() && !exposureText.empty()) {
-            double exposure;
-
-            if (!parseDouble(exposureText, exposure) || exposure < 0.0) {
-                return false;
-            }
-
-            loadedPortfolio.sectorExposure[sector] = exposure;
+        else {
+            std::cerr << "Unknown portfolio CSV type: "
+                      << type << "\n";
+            return false;
         }
     }
 
-    if (!file.eof() && file.fail()) {
-        std::cerr << "Error reading portfolio CSV.\n";
+    if (!accountFound || !cashFound) {
+        std::cerr << "Portfolio CSV is missing account value "
+                  << "or available cash.\n";
         return false;
     }
-
-    if (!accountValueFound || !availableCashFound ||
-        loadedPortfolio.accountValue <= 0.0) {
-        std::cerr << "Portfolio CSV is missing account value or available cash.\n";
-        return false;
-    }
-
-    portfolio = loadedPortfolio;
 
     return true;
 }
 
+
 // ==================================================
 // LOAD RISK LIMITS CSV
 //
-// Supported row format:
-// maxPlannedLoss,10000
-// maxSectorExposureFraction,0.30
-// maxStressLossFraction,0.05
-// sectorStressShock,IT,0.10
+// Expected format:
 //
-// Header-based format is also supported:
-// maxPlannedLoss,maxSectorExposureFraction,
-// maxStressLossFraction,sector,shock
-// 10000,0.30,0.05,IT,0.10
+// type,key,value
+// max_planned_loss,,500
+// max_sector_exposure,,0.30
+// max_stress_loss,,0.05
+// sector_shock,IT,0.10
+// sector_shock,Banking,0.05
 // ==================================================
 
 bool loadRiskLimitsCSV(
@@ -421,169 +270,91 @@ bool loadRiskLimitsCSV(
     std::ifstream file(filename);
 
     if (!file.is_open()) {
-        std::cerr << "Error: Cannot open risk limits CSV: "
+        std::cerr << "Could not open risk limits CSV: "
                   << filename << "\n";
         return false;
     }
 
-    RiskLimits loadedLimits;
-
-    std::string line;
-    std::vector<std::string> headers;
-
     bool plannedLossFound = false;
     bool sectorLimitFound = false;
     bool stressLimitFound = false;
-    bool firstNonEmptyLine = true;
+
+    std::string line;
 
     while (std::getline(file, line)) {
-        if (trim(line).empty()) {
+        if (trim(line).empty())
             continue;
-        }
 
         std::vector<std::string> fields = parseCSVLine(line);
 
-        if (fields.empty()) {
+        if (fields.size() < 3) {
+            std::cerr << "Invalid risk limits CSV row: "
+                      << line << "\n";
+            return false;
+        }
+
+        std::string type = toLower(trim(fields[0]));
+        std::string key = trim(fields[1]);
+        std::string valueText = trim(fields[2]);
+
+        if (type == "type")
             continue;
+
+        double value = 0.0;
+
+        if (!parseDouble(valueText, value)) {
+            std::cerr << "Invalid risk limit value: "
+                      << line << "\n";
+            return false;
         }
 
-        if (firstNonEmptyLine) {
-            firstNonEmptyLine = false;
-
-            headers = fields;
-
-            bool isHeader =
-                findColumn(headers, "maxPlannedLoss") >= 0 ||
-                findColumn(headers, "maxSectorExposureFraction") >= 0 ||
-                findColumn(headers, "sectorStressShock") >= 0;
-
-            if (isHeader) {
-                continue;
-            }
-        }
-
-        std::string key = toLower(trim(fields[0]));
-
-        // Key-value format
-        if ((key == "maxplannedloss" ||
-             key == "maxsectorexposurefraction" ||
-             key == "maxstresslossfraction") &&
-            fields.size() >= 2) {
-            double value;
-
-            if (!parseDouble(fields[1], value)) {
-                std::cerr << "Invalid risk limit value.\n";
+        if (type == "max_planned_loss") {
+            if (plannedLossFound || value < 0.0)
                 return false;
-            }
 
-            if (key == "maxplannedloss") {
-                if (value < 0.0) return false;
-                loadedLimits.maxPlannedLoss = value;
-                plannedLossFound = true;
-            } else if (key == "maxsectorexposurefraction") {
-                if (value < 0.0 || value > 1.0) return false;
-                loadedLimits.maxSectorExposureFraction = value;
-                sectorLimitFound = true;
-            } else {
-                if (value < 0.0 || value > 1.0) return false;
-                loadedLimits.maxStressLossFraction = value;
-                stressLimitFound = true;
-            }
-
-            continue;
-        }
-
-        if ((key == "sectorstressshock" || key == "shock") &&
-            fields.size() >= 3) {
-            double shock;
-
-            if (trim(fields[1]).empty() ||
-                !parseDouble(fields[2], shock) ||
-                shock < 0.0 || shock > 1.0) {
-                std::cerr << "Invalid sector stress shock.\n";
-                return false;
-            }
-
-            loadedLimits.sectorStressShock[fields[1]] = shock;
-            continue;
-        }
-
-        // Header-based format
-        std::string value;
-
-        int plannedIndex = findColumn(headers, "maxPlannedLoss");
-        int sectorLimitIndex =
-            findColumn(headers, "maxSectorExposureFraction");
-        int stressLimitIndex =
-            findColumn(headers, "maxStressLossFraction");
-        int sectorIndex = findColumn(headers, "sector");
-        int shockIndex = findColumn(headers, "shock");
-
-        if (getField(fields, plannedIndex, value) && !value.empty()) {
-            double number;
-
-            if (!parseDouble(value, number) || number < 0.0) return false;
-
-            loadedLimits.maxPlannedLoss = number;
+            limits.maxPlannedLoss = value;
             plannedLossFound = true;
         }
+        else if (type == "max_sector_exposure") {
+            if (sectorLimitFound || value < 0.0 || value > 1.0)
+                return false;
 
-        if (getField(fields, sectorLimitIndex, value) && !value.empty()) {
-            double number;
-
-            if (!parseDouble(value, number) ||
-                number < 0.0 || number > 1.0) return false;
-
-            loadedLimits.maxSectorExposureFraction = number;
+            limits.maxSectorExposureFraction = value;
             sectorLimitFound = true;
         }
+        else if (type == "max_stress_loss") {
+            if (stressLimitFound || value < 0.0 || value > 1.0)
+                return false;
 
-        if (getField(fields, stressLimitIndex, value) && !value.empty()) {
-            double number;
-
-            if (!parseDouble(value, number) ||
-                number < 0.0 || number > 1.0) return false;
-
-            loadedLimits.maxStressLossFraction = number;
+            limits.maxStressLossFraction = value;
             stressLimitFound = true;
         }
+        else if (type == "sector_shock") {
+            if (key.empty() || value < 0.0 || value > 1.0)
+                return false;
 
-        std::string sector;
-        std::string shockText;
-
-        if (getField(fields, sectorIndex, sector) &&
-            getField(fields, shockIndex, shockText) &&
-            !sector.empty() && !shockText.empty()) {
-            double shock;
-
-            if (!parseDouble(shockText, shock) ||
-                shock < 0.0 || shock > 1.0) return false;
-
-            loadedLimits.sectorStressShock[sector] = shock;
+            limits.sectorStressShock[key] = value;
+        }
+        else {
+            std::cerr << "Unknown risk limit type: "
+                      << type << "\n";
+            return false;
         }
     }
 
-    if (!file.eof() && file.fail()) {
-        std::cerr << "Error reading risk limits CSV.\n";
+    if (!plannedLossFound ||
+        !sectorLimitFound ||
+        !stressLimitFound) {
+        std::cerr << "Risk limits CSV is missing a required limit.\n";
         return false;
     }
-
-    if (!plannedLossFound || !sectorLimitFound || !stressLimitFound) {
-        std::cerr << "Risk limits CSV is missing one or more required limits.\n";
-        return false;
-    }
-
-    limits = loadedLimits;
 
     return true;
 }
 
+
 // ==================================================
 // SAVE DECISION RECORD
-//
-// CSV columns:
-// symbol,sector,entryPrice,stopLoss,quantity,decision,
-// plannedLoss,requiredCash,stressLossFraction,hash
 // ==================================================
 
 bool saveDecisionRecord(
@@ -591,134 +362,129 @@ bool saveDecisionRecord(
     const TradeInput& trade,
     const RiskResult& result
 ) {
-    bool writeHeader = false;
+    bool needsHeader = false;
 
     {
-        std::ifstream checkFile(filename, std::ios::binary);
+        std::ifstream check(filename, std::ios::binary | std::ios::ate);
 
-        if (!checkFile.is_open()) {
-            writeHeader = true;
-        } else {
-            checkFile.seekg(0, std::ios::end);
-            writeHeader = (checkFile.tellg() == 0);
-        }
+        needsHeader =
+            !check.is_open() || check.tellg() == 0;
     }
 
     std::ofstream file(filename, std::ios::app);
 
     if (!file.is_open()) {
-        std::cerr << "Error: Cannot open decision log: "
+        std::cerr << "Could not open decision log: "
                   << filename << "\n";
         return false;
     }
 
-    if (writeHeader) {
-        file << "symbol,sector,entryPrice,stopLoss,quantity,"
-             << "decision,plannedLoss,requiredCash,"
-             << "stressLossFraction,hash\n";
-    }
-
-    // Hash exactly the data portion written to the CSV.
-    const std::string record = createDecisionRecord(trade, result);
+    const std::string record = makeRecordData(trade, result);
     const std::string hash = generateHash(record);
+
+    if (needsHeader) {
+        file << "symbol,sector,entry_price,stop_loss,quantity,"
+             << "decision,planned_loss,required_cash,"
+             << "stress_loss_fraction,hash\n";
+    }
 
     file << record << "," << hash << "\n";
 
-    file.flush();
-
     if (!file.good()) {
-        std::cerr << "Error writing decision record.\n";
+        std::cerr << "Failed to write decision record.\n";
         return false;
     }
 
-    std::cout << "Decision saved successfully.\n";
-    std::cout << "Record Hash: " << hash << "\n";
+    std::cout << "Decision record saved. Hash: "
+              << hash << "\n";
 
     return true;
 }
 
+
 // ==================================================
 // REPLAY DECISION RECORDS
+// Skips repeated headers and verifies each hash.
 // ==================================================
 
 void replayDecisionRecords(const std::string& filename) {
-    std::ifstream file(filename, std::ios::binary);
+    std::ifstream file(filename);
 
     if (!file.is_open()) {
-        std::cerr << "Error: Cannot open decision log: "
+        std::cerr << "Could not open decision log for replay: "
                   << filename << "\n";
         return;
     }
 
-    std::cout << "\n========== DECISION REPLAY ==========\n\n";
+    std::cout << "\n========== DECISION REPLAY ==========\n";
 
     std::string line;
-    bool headerSkipped = false;
-    bool foundRecord = false;
+    int recordNumber = 0;
+    int verifiedCount = 0;
+    int failedCount = 0;
 
     while (std::getline(file, line)) {
-        if (trim(line).empty()) {
+        if (trim(line).empty())
+            continue;
+
+        std::vector<std::string> fields = parseCSVLine(line);
+
+        if (fields.empty())
+            continue;
+
+        // Skip every repeated header.
+        if (toLower(trim(fields[0])) == "symbol")
+            continue;
+
+        ++recordNumber;
+
+        if (fields.size() != 10) {
+            ++failedCount;
+
+            std::cout << "Record " << recordNumber
+                      << ": Integrity: FAILED "
+                      << "(invalid field count)\n";
             continue;
         }
 
-        if (!headerSkipped) {
-            headerSkipped = true;
+        std::ostringstream data;
 
-            if (toLower(trim(line)).find("symbol,") == 0) {
-                continue;
-            }
+        for (int i = 0; i < 9; ++i) {
+            if (i > 0)
+                data << ",";
+
+            data << fields[i];
         }
 
-        // The final comma separates the stored hash from the data.
-        const std::size_t hashSeparator = line.rfind(',');
+        const std::string calculatedHash =
+            generateHash(data.str());
 
-        if (hashSeparator == std::string::npos) {
-            std::cout << "Invalid decision record format.\n\n";
-            continue;
-        }
+        const std::string storedHash = fields[9];
 
-        const std::string recordData = line.substr(0, hashSeparator);
-        const std::string storedHash = trim(
-            line.substr(hashSeparator + 1)
-        );
+        const bool verified =
+            (calculatedHash == storedHash);
 
-        const std::string calculatedHash = generateHash(recordData);
+        if (verified)
+            ++verifiedCount;
+        else
+            ++failedCount;
 
-        const bool integrityVerified =
-            (storedHash == calculatedHash);
+        std::cout << "Record " << recordNumber
+                  << ": Integrity: "
+                  << (verified ? "VERIFIED" : "FAILED")
+                  << "\n";
 
-        std::vector<std::string> fields = parseCSVLine(recordData);
-
-        if (fields.size() != 9) {
-            std::cout << "Invalid decision record fields.\n";
-            std::cout << "Integrity: FAILED\n\n";
-            continue;
-        }
-
-        foundRecord = true;
-
-        std::cout << "Symbol: " << fields[0] << "\n";
-        std::cout << "Sector: " << fields[1] << "\n";
-        std::cout << "Entry Price: " << fields[2] << "\n";
-        std::cout << "Stop Loss: " << fields[3] << "\n";
-        std::cout << "Quantity: " << fields[4] << "\n";
-        std::cout << "Decision: " << fields[5] << "\n";
-        std::cout << "Planned Loss: " << fields[6] << "\n";
-        std::cout << "Required Cash: " << fields[7] << "\n";
-        std::cout << "Stress Loss Fraction: " << fields[8] << "\n";
-
-        if (integrityVerified) {
-            std::cout << "Integrity: VERIFIED\n";
-        } else {
-            std::cout << "Integrity: FAILED\n";
-        }
-
-        std::cout << "\n";
+        std::cout << "  Symbol: " << fields[0] << "\n"
+                  << "  Sector: " << fields[1] << "\n"
+                  << "  Decision: "
+                  << (fields[5] == "0" ? "PASS" : "BLOCK")
+                  << "\n";
     }
 
-    if (!foundRecord) {
-        std::cout << "No valid decision records found.\n";
-    }
+    std::cout << "\nReplay Summary:\n"
+              << "Total records: " << recordNumber << "\n"
+              << "Verified: " << verifiedCount << "\n"
+              << "Failed: " << failedCount << "\n";
 
     std::cout << "=====================================\n";
 }
