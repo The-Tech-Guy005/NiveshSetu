@@ -1,20 +1,26 @@
+
 #include "RiskEngine.h"
+#include "Member2.h"
+
 #include <iostream>
+#include <iomanip>
 
 using namespace std;
 using namespace niveshsetu;
 
+// Display risk report
 void printResult(const RiskResult& result) {
 
     cout << "\n========== RISK REPORT ==========\n";
 
     cout << "Decision: ";
 
-    if (result.decision == RiskDecision::PASS) {
+    if (result.decision == RiskDecision::PASS)
         cout << "PASS\n";
-    } else {
+    else
         cout << "BLOCK\n";
-    }
+
+    cout << fixed << setprecision(2);
 
     cout << "Planned Loss: Rs. "
          << result.plannedLoss << "\n";
@@ -23,16 +29,14 @@ void printResult(const RiskResult& result) {
          << result.requiredCash << "\n";
 
     cout << "Stress Loss: "
-         << result.stressLossFraction * 100
-         << "%\n";
+         << result.stressLossFraction * 100 << "%\n";
 
     cout << "\nIndividual Rules:\n";
 
     for (const auto& rule : result.ruleResults) {
 
         cout << rule.ruleName << " : "
-             << (rule.passed ? "PASS" : "FAIL")
-             << "\n";
+             << (rule.passed ? "PASS" : "FAIL") << "\n";
 
         cout << "Reason: "
              << rule.explanation << "\n";
@@ -42,7 +46,8 @@ void printResult(const RiskResult& result) {
 
     if (result.failureReasons.empty()) {
         cout << "No failures found.\n";
-    } else {
+    }
+    else {
         for (const auto& reason : result.failureReasons) {
             cout << "- " << reason << "\n";
         }
@@ -51,31 +56,35 @@ void printResult(const RiskResult& result) {
     cout << "=================================\n";
 }
 
+
+// Main function
 int main() {
 
+    cout << "\n========== NIVESHSETU ==========\n";
+    cout << "Pre-Trade Risk Management Engine\n";
+
+    // 1. Create Risk Engine object
     RiskEngine engine;
 
-    // Portfolio details
+    // 2. Load portfolio and risk limits from CSV
     PortfolioInput portfolio;
-
-    portfolio.accountValue = 100000;
-    portfolio.availableCash = 5000;
-
-    portfolio.sectorExposure["IT"] = 20000;
-    portfolio.sectorExposure["Banking"] = 20000;
-
-    // Risk limits
     RiskLimits limits;
 
-    limits.maxPlannedLoss = 500;
-    limits.maxSectorExposureFraction = 0.30;
-    limits.maxStressLossFraction = 0.05;
+    if (!member2::loadPortfolioCSV(
+            "data/portfolio.csv", portfolio)) {
+        return 1;
+    }
 
-    limits.sectorStressShock["IT"] = 0.10;
-    limits.sectorStressShock["Banking"] = 0.05;
+    if (!member2::loadRiskLimitsCSV(
+            "data/risk_limits.csv", limits)) {
+        return 1;
+    }
 
-    // TEST 1: Valid trade
-    cout << "\nTEST 1: VALID TRADE\n";
+    cout << "\nPortfolio and risk limits loaded successfully!\n";
+
+
+    // 3. TEST CASE 1 - Valid Trade
+    cout << "\n\n******** TEST CASE 1 ********\n";
 
     TradeInput trade1;
 
@@ -90,8 +99,13 @@ int main() {
 
     printResult(result1);
 
-    // TEST 2: Trade exceeding risk and cash limits
-    cout << "\nTEST 2: RISKY TRADE\n";
+    member2::saveDecisionRecord(
+        "data/decision_log.csv", trade1, result1
+    );
+
+
+    // 4. TEST CASE 2 - Insufficient Cash and High Loss
+    cout << "\n\n******** TEST CASE 2 ********\n";
 
     TradeInput trade2;
 
@@ -106,16 +120,20 @@ int main() {
 
     printResult(result2);
 
-    // TEST 3: Invalid trade
+    member2::saveDecisionRecord(
+        "data/decision_log.csv", trade2, result2
+    );
 
-    cout << "\nTEST 3: INVALID TRADE\n";
+
+    // 5. TEST CASE 3 - Invalid Stop Loss
+    cout << "\n\n******** TEST CASE 3 ********\n";
 
     TradeInput trade3;
 
-    trade3.symbol = "TCS";
+    trade3.symbol = "WIPRO";
     trade3.sector = "IT";
     trade3.entryPrice = 100;
-    trade3.stopLoss = 110;  // Invalid: stop loss above entry
+    trade3.stopLoss = 110;
     trade3.quantity = 10;
 
     RiskResult result3 =
@@ -123,9 +141,13 @@ int main() {
 
     printResult(result3);
 
-    // TEST 4: Excessive sector concentration
+    member2::saveDecisionRecord(
+        "data/decision_log.csv", trade3, result3
+    );
 
-    cout << "\nTEST 4: SECTOR LIMIT TEST\n";
+
+    // 6. TEST CASE 4 - Excessive Sector Concentration
+    cout << "\n\n******** TEST CASE 4 ********\n";
 
     PortfolioInput portfolio4 = portfolio;
     portfolio4.availableCash = 20000;
@@ -145,6 +167,21 @@ int main() {
         engine.evaluate(trade4, portfolio4, limits4);
 
     printResult(result4);
+
+    member2::saveDecisionRecord(
+        "data/decision_log.csv", trade4, result4
+    );
+
+
+    // 7. Replay saved decision records
+    cout << "\n\n******** DECISION REPLAY ********\n";
+
+    member2::replayDecisionRecords(
+        "data/decision_log.csv"
+    );
+
+
+    cout << "\nNiveshSetu execution completed successfully!\n";
 
     return 0;
 }

@@ -1,0 +1,6 @@
+type,key,value
+max_planned_loss,,500
+max_sector_exposure, ,0.30
+max_stress_loss,,0.05
+sector_shock,IT,0.10
+sector_shock,Banking,0.05
