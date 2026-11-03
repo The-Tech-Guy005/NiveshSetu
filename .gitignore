@@ -1,0 +1,6 @@
+main
+niveshsetu
+*.o
+*.out
+build/
+.DS_Store

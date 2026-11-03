@@ -1,4 +1,8 @@
+
 #include "RiskEngine.h"
+
+#include <cmath>
+#include <string>
 
 namespace niveshsetu {
 
@@ -10,9 +14,11 @@ RiskResult RiskEngine::evaluate(
 
     RiskResult result;
 
-    // Helper function to record rule results
-    auto addRule = [&](std::string name, bool passed,
+    // Function to record every rule
+    auto addRule = [&](std::string name,
+                       bool passed,
                        std::string explanation) {
+
         result.ruleResults.push_back({
             name,
             passed,
@@ -24,10 +30,12 @@ RiskResult RiskEngine::evaluate(
         }
     };
 
-    // 1. Validate trade inputs
+    // DAY 1: Validate trade details
     bool validTrade =
         !trade.symbol.empty() &&
         !trade.sector.empty() &&
+        std::isfinite(trade.entryPrice) &&
+        std::isfinite(trade.stopLoss) &&
         trade.entryPrice > 0 &&
         trade.stopLoss > 0 &&
         trade.stopLoss < trade.entryPrice &&
@@ -36,146 +44,182 @@ RiskResult RiskEngine::evaluate(
     addRule(
         "Trade Validation",
         validTrade,
-        validTrade ? "Trade inputs are valid."
-                   : "Invalid trade details."
+        validTrade
+            ? "Trade details are valid."
+            : "Invalid trade details."
     );
 
     if (!validTrade) return result;
 
-    // 2. Validate portfolio
+    // Validate portfolio
     bool validPortfolio =
+        std::isfinite(portfolio.accountValue) &&
+        std::isfinite(portfolio.availableCash) &&
         portfolio.accountValue > 0 &&
         portfolio.availableCash >= 0;
 
     addRule(
         "Portfolio Validation",
         validPortfolio,
-        validPortfolio ? "Portfolio details are valid."
-                       : "Invalid account value or available cash."
+        validPortfolio
+            ? "Portfolio details are valid."
+            : "Invalid portfolio details."
     );
 
     if (!validPortfolio) return result;
 
-    // 3. Validate risk limits
+    // DAY 2: Validate existing sector exposures
+    bool validExposure = true;
+
+    for (const auto& item : portfolio.sectorExposure) {
+
+        if (item.first.empty() ||
+            !std::isfinite(item.second) ||
+            item.second < 0) {
+
+            validExposure = false;
+            break;
+        }
+    }
+
+    addRule(
+        "Exposure Validation",
+        validExposure,
+        validExposure
+            ? "Existing sector exposures are valid."
+            : "Invalid sector exposure found."
+    );
+
+    if (!validExposure) return result;
+
+    // DAY 3: Validate risk configuration
     bool validLimits =
+        std::isfinite(limits.maxPlannedLoss) &&
+        std::isfinite(limits.maxSectorExposureFraction) &&
+        std::isfinite(limits.maxStressLossFraction) &&
         limits.maxPlannedLoss >= 0 &&
         limits.maxSectorExposureFraction >= 0 &&
-        limits.maxStressLossFraction >= 0;
+        limits.maxSectorExposureFraction <= 1 &&
+        limits.maxStressLossFraction >= 0 &&
+        limits.maxStressLossFraction <= 1;
 
     addRule(
         "Risk Limit Validation",
         validLimits,
-        validLimits ? "Risk limits are valid."
-                    : "Invalid risk limit configuration."
+        validLimits
+            ? "Risk limits are valid."
+            : "Invalid risk limit configuration."
     );
 
     if (!validLimits) return result;
 
-    // 4. Calculate planned loss
+    // DAY 4: Calculate planned loss
     result.plannedLoss =
-        (trade.entryPrice - trade.stopLoss) * trade.quantity;
+        (trade.entryPrice - trade.stopLoss) *
+        trade.quantity;
 
     addRule(
         "Maximum Planned Loss",
         result.plannedLoss <= limits.maxPlannedLoss,
-        "Planned loss: " + std::to_string(result.plannedLoss)
+        "Calculated planned loss: " +
+        std::to_string(result.plannedLoss)
     );
 
-    // 5. Calculate required cash
+    // Calculate required cash
     result.requiredCash =
         trade.entryPrice * trade.quantity;
 
     addRule(
         "Cash Availability",
         result.requiredCash <= portfolio.availableCash,
-        "Required cash: " + std::to_string(result.requiredCash)
+        "Required cash: " +
+        std::to_string(result.requiredCash)
     );
 
-    // 6. Calculate sector exposure
+    // DAY 5: Calculate post-trade sector exposure
     auto exposures = portfolio.sectorExposure;
 
+    exposures[trade.sector] += result.requiredCash;
+
+    bool concentrationPassed = true;
+
     for (const auto& item : exposures) {
-        if (item.first.empty() || item.second < 0) {
-            addRule(
-                "Portfolio Exposure Validation",
-                false,
-                "Invalid existing sector exposure."
-            );
-            return result;
+
+        double concentration =
+            item.second / portfolio.accountValue;
+
+        result.postTradeSectorConcentration[item.first] =
+            concentration;
+
+        if (concentration >
+            limits.maxSectorExposureFraction) {
+
+            concentrationPassed = false;
         }
     }
 
-    double existingExposure = 0.0;
-
-    if (exposures.count(trade.sector)) {
-        existingExposure = exposures[trade.sector];
-    }
-
-    double tradeValue = result.requiredCash;
-
-    double postTradeExposure = existingExposure + tradeValue;
-
-    double concentration =
-        postTradeExposure / portfolio.accountValue;
-
-    result.postTradeSectorConcentration[trade.sector] =
-        concentration;
-
     addRule(
         "Sector Concentration",
-        concentration <= limits.maxSectorExposureFraction,
-        "Post-trade sector concentration: " +
-        std::to_string(concentration * 100) + "%"
+        concentrationPassed,
+        concentrationPassed
+            ? "All sector exposure limits are satisfied."
+            : "One or more sectors exceed the allowed concentration."
     );
 
-    // 7. Calculate portfolio stress loss
-    exposures[trade.sector] = postTradeExposure;
-
+    // DAY 5: Calculate portfolio stress loss
     double totalStressLoss = 0.0;
+    bool stressConfigurationValid = true;
 
     for (const auto& item : exposures) {
 
         const std::string& sector = item.first;
         double exposure = item.second;
 
-        auto shock = limits.sectorStressShock.find(sector);
+        auto shock =
+            limits.sectorStressShock.find(sector);
 
         if (shock == limits.sectorStressShock.end()) {
-            addRule(
-                "Stress Configuration",
-                false,
-                "Missing stress shock for sector: " + sector
-            );
-            return result;
+
+            stressConfigurationValid = false;
+            break;
         }
 
-        if (shock->second < 0 || shock->second > 1) {
-            addRule(
-                "Stress Configuration",
-                false,
-                "Invalid stress shock for sector: " + sector
-            );
-            return result;
+        if (!std::isfinite(shock->second) ||
+            shock->second < 0 ||
+            shock->second > 1) {
+
+            stressConfigurationValid = false;
+            break;
         }
 
         totalStressLoss += exposure * shock->second;
-
-        result.postTradeSectorConcentration[sector] =
-            exposure / portfolio.accountValue;
     }
+
+    addRule(
+        "Stress Configuration",
+        stressConfigurationValid,
+        stressConfigurationValid
+            ? "Stress configuration is valid."
+            : "Missing or invalid sector stress configuration."
+    );
+
+    if (!stressConfigurationValid) return result;
 
     result.stressLossFraction =
         totalStressLoss / portfolio.accountValue;
 
     addRule(
         "Portfolio Stress Test",
-        result.stressLossFraction <= limits.maxStressLossFraction,
-        "Stress loss: " +
-        std::to_string(result.stressLossFraction * 100) + "%"
+        result.stressLossFraction <=
+            limits.maxStressLossFraction,
+        "Calculated stress loss: " +
+        std::to_string(result.stressLossFraction * 100) +
+        "%"
     );
 
-    // 8. Final decision
-    result.decision = result.failureReasons.empty()
+    // Final decision
+    result.decision =
+        result.failureReasons.empty()
         ? RiskDecision::PASS
         : RiskDecision::BLOCK;
 
