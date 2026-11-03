@@ -1,6 +1,21 @@
-main
-niveshsetu
-*.o
-*.out
+# Build output
 build/
+niveshsetu/
+
+# Compiled files
+*.exe
+*.o
+*.obj
+*.a
+*.dll
+*.dll.a
+*.out
+
+# CMake generated files
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Operating system files
 .DS_Store
