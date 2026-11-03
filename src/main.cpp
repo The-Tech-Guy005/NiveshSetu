@@ -1,145 +1,187 @@
 
+#include "RiskEngine.h"
+#include "Member2.h"
+
 #include <iostream>
 #include <iomanip>
+
 using namespace std;
+using namespace niveshsetu;
 
-class TradeTicket {
-private:
-    double entryPrice;
-    double stopLoss;
-    int quantity;
+// Display risk report
+void printResult(const RiskResult& result) {
 
-public:
-    TradeTicket(double entry, double stop, int qty) {
-        entryPrice = entry;
-        stopLoss = stop;
-        quantity = qty;
+    cout << "\n========== RISK REPORT ==========\n";
+
+    cout << "Decision: ";
+
+    if (result.decision == RiskDecision::PASS)
+        cout << "PASS\n";
+    else
+        cout << "BLOCK\n";
+
+    cout << fixed << setprecision(2);
+
+    cout << "Planned Loss: Rs. "
+         << result.plannedLoss << "\n";
+
+    cout << "Required Cash: Rs. "
+         << result.requiredCash << "\n";
+
+    cout << "Stress Loss: "
+         << result.stressLossFraction * 100 << "%\n";
+
+    cout << "\nIndividual Rules:\n";
+
+    for (const auto& rule : result.ruleResults) {
+
+        cout << rule.ruleName << " : "
+             << (rule.passed ? "PASS" : "FAIL") << "\n";
+
+        cout << "Reason: "
+             << rule.explanation << "\n";
     }
 
-    double getRiskPerShare() const {
-        return entryPrice - stopLoss;
+    cout << "\nFailure Reasons:\n";
+
+    if (result.failureReasons.empty()) {
+        cout << "No failures found.\n";
     }
-
-    double getTotalRisk() const {
-        return getRiskPerShare() * quantity;
-    }
-
-    bool isValid() const {
-        return entryPrice > 0 &&
-               stopLoss > 0 &&
-               stopLoss < entryPrice &&
-               quantity > 0;
-    }
-
-    void display() const {
-        cout << fixed << setprecision(2);
-        cout << "\n--- Trade Details ---\n";
-        cout << "Entry Price: Rs. " << entryPrice << '\n';
-        cout << "Stop Loss: Rs. " << stopLoss << '\n';
-        cout << "Quantity: " << quantity << '\n';
-        cout << "Planned Risk: Rs. " << getTotalRisk() << '\n';
-    }
-};
-
-class RiskLimits {
-private:
-    double maxAllowedRisk;
-
-public:
-    RiskLimits(double limit) {
-        maxAllowedRisk = limit;
-    }
-
-    bool isWithinLimit(double totalRisk) const {
-        return totalRisk <= maxAllowedRisk;
-    }
-
-    void displayResult(double totalRisk) const {
-        cout << "\n--- Risk Assessment ---\n";
-        cout << "Maximum Allowed Risk: Rs. "
-             << maxAllowedRisk << '\n';
-
-        if (isWithinLimit(totalRisk)) {
-            cout << "Result: PASS - Risk is within the limit.\n";
-        } else {
-            cout << "Result: BLOCK - Risk exceeds the limit.\n";
+    else {
+        for (const auto& reason : result.failureReasons) {
+            cout << "- " << reason << "\n";
         }
     }
-};
+
+    cout << "=================================\n";
+}
 
 
-class Portfolio {
-private:
-    double availableCash;
-    double holdingsValue;
-
-public:
-    Portfolio(double cash, double holdings) {
-        availableCash = cash;
-        holdingsValue = holdings;
-    }
-
-    double getAvailableCash() const {
-        return availableCash;
-    }
-
-    double getHoldingsValue() const {
-        return holdingsValue;
-    }
-
-    double getAccountValue() const {
-        return availableCash + holdingsValue;
-    }
-
-    void display() const {
-        cout << "\n--- Portfolio Summary ---\n";
-        cout << "Available Cash: Rs. "
-             << availableCash << '\n';
-        cout << "Holdings Value: Rs. "
-             << holdingsValue << '\n';
-        cout << "Account Value: Rs. "
-             << getAccountValue() << '\n';
-    }
-};
-
+// Main function
 int main() {
-    double entry, stop;
-    int qty;
 
-    cout << "=== NiveshSetu ===\n";
+    cout << "\n========== NIVESHSETU ==========\n";
+    cout << "Pre-Trade Risk Management Engine\n";
 
-    cout << "Enter entry price: ";
-    if (!(cin >> entry)) {
-        cout << "Invalid entry price.\n";
+    // 1. Create Risk Engine object
+    RiskEngine engine;
+
+    // 2. Load portfolio and risk limits from CSV
+    PortfolioInput portfolio;
+    RiskLimits limits;
+
+    if (!member2::loadPortfolioCSV(
+            "data/portfolio.csv", portfolio)) {
         return 1;
     }
 
-    cout << "Enter stop-loss price: ";
-    if (!(cin >> stop)) {
-        cout << "Invalid stop-loss price.\n";
+    if (!member2::loadRiskLimitsCSV(
+            "data/risk_limits.csv", limits)) {
         return 1;
     }
 
-    cout << "Enter quantity: ";
-    if (!(cin >> qty)) {
-        cout << "Invalid quantity.\n";
-        return 1;
-    }
+    cout << "\nPortfolio and risk limits loaded successfully!\n";
 
-    TradeTicket trade(entry, stop, qty);
 
-    if (!trade.isValid()) {
-        cout << "Invalid trade details. Check your inputs.\n";
-        return 1;
-    }
+    // 3. TEST CASE 1 - Valid Trade
+    cout << "\n\n******** TEST CASE 1 ********\n";
 
-    RiskLimits limits(3000);
+    TradeInput trade1;
 
-    Portfolio portfolio(600000, 400000);
-    portfolio.display();
+    trade1.symbol = "TCS";
+    trade1.sector = "IT";
+    trade1.entryPrice = 100;
+    trade1.stopLoss = 90;
+    trade1.quantity = 10;
 
-    trade.display();
-    limits.displayResult(trade.getTotalRisk());
+    RiskResult result1 =
+        engine.evaluate(trade1, portfolio, limits);
+
+    printResult(result1);
+
+    member2::saveDecisionRecord(
+        "data/decision_log.csv", trade1, result1
+    );
+
+
+    // 4. TEST CASE 2 - Insufficient Cash and High Loss
+    cout << "\n\n******** TEST CASE 2 ********\n";
+
+    TradeInput trade2;
+
+    trade2.symbol = "INFY";
+    trade2.sector = "IT";
+    trade2.entryPrice = 100;
+    trade2.stopLoss = 90;
+    trade2.quantity = 60;
+
+    RiskResult result2 =
+        engine.evaluate(trade2, portfolio, limits);
+
+    printResult(result2);
+
+    member2::saveDecisionRecord(
+        "data/decision_log.csv", trade2, result2
+    );
+
+
+    // 5. TEST CASE 3 - Invalid Stop Loss
+    cout << "\n\n******** TEST CASE 3 ********\n";
+
+    TradeInput trade3;
+
+    trade3.symbol = "WIPRO";
+    trade3.sector = "IT";
+    trade3.entryPrice = 100;
+    trade3.stopLoss = 110;
+    trade3.quantity = 10;
+
+    RiskResult result3 =
+        engine.evaluate(trade3, portfolio, limits);
+
+    printResult(result3);
+
+    member2::saveDecisionRecord(
+        "data/decision_log.csv", trade3, result3
+    );
+
+
+    // 6. TEST CASE 4 - Excessive Sector Concentration
+    cout << "\n\n******** TEST CASE 4 ********\n";
+
+    PortfolioInput portfolio4 = portfolio;
+    portfolio4.availableCash = 20000;
+
+    RiskLimits limits4 = limits;
+    limits4.maxPlannedLoss = 2000;
+
+    TradeInput trade4;
+
+    trade4.symbol = "INFY";
+    trade4.sector = "IT";
+    trade4.entryPrice = 100;
+    trade4.stopLoss = 90;
+    trade4.quantity = 120;
+
+    RiskResult result4 =
+        engine.evaluate(trade4, portfolio4, limits4);
+
+    printResult(result4);
+
+    member2::saveDecisionRecord(
+        "data/decision_log.csv", trade4, result4
+    );
+
+
+    // 7. Replay saved decision records
+    cout << "\n\n******** DECISION REPLAY ********\n";
+
+    member2::replayDecisionRecords(
+        "data/decision_log.csv"
+    );
+
+
+    cout << "\nNiveshSetu execution completed successfully!\n";
 
     return 0;
 }

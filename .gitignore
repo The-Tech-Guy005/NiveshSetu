@@ -1,13 +1,21 @@
-@"
+# Build output
 build/
+niveshsetu/
+
+# Compiled files
 *.exe
 *.o
 *.obj
 *.a
 *.dll
 *.dll.a
+*.out
+
+# CMake generated files
 CMakeFiles/
 CMakeCache.txt
 cmake_install.cmake
 Makefile
-"@ | Set-Content .gitignore
+
+# Operating system files
+.DS_Store
